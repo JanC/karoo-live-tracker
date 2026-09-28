@@ -15,10 +15,19 @@ if os.path.exists(".env"):
 
 PORT = int(os.environ.get("PORT", 8765))
 UPSTREAM = "https://dashboard.hammerhead.io/v1/shares/tracking/"
+DEMO_ID = "demo"  # simulated ride, see mock.py
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def send_json(self, data):
+        body = json.dumps(data).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         if self.path == "/config.js":
             body = f"window.MAPY_API_KEY = {json.dumps(os.environ.get('MAPY_API_KEY', ''))};".encode()
@@ -33,6 +42,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         share_id = self.path.rsplit("/", 1)[-1]
         if not re.fullmatch(r"[A-Za-z0-9_-]+", share_id):
             return self.send_error(400, "bad tracking id")
+        if share_id == DEMO_ID:
+            import mock  # loaded on first use so a missing template doesn't break the proxy
+            return self.send_json(mock.response())
         cache_file = os.path.join(CACHE_DIR, share_id + ".json")
         headers = {}
         try:
