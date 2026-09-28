@@ -2,7 +2,7 @@
 
 A small web app for following a ride shared from a Hammerhead Karoo bike computer. Paste a Hammerhead live tracking link and it shows the rider on a map with their route, ridden trace, live stats and an elevation profile, updated every few seconds.
 
-**Try it:** https://karoo.krtek.xyz/ (or open the [demo ride](https://karoo.krtek.xyz/?id=demo) directly)
+**Try it:** https://karoo-live.fly.dev/ (or open the [demo ride](https://karoo-live.fly.dev/?id=demo) directly)
 
 ![Live ride view](screens/karoo1.jpg)
 
