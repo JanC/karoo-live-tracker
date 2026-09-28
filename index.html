@@ -35,13 +35,19 @@
   #rider { color: var(--muted); font-size: 13px; }
   #error { color: var(--accent); font-size: 12px; margin-top: 6px; }
   #error:empty { display: none; }
-  .hint { color: var(--muted); margin: 4px 0 14px; }
-  #idForm { display: flex; gap: 8px; }
-  #idForm input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
-                  background: var(--tile); color: var(--fg); font: 14px Inter, system-ui; }
+  #panel.welcome { width: 500px; padding: 28px; }
+  .welcome h1 { font-size: 26px; margin: 0 0 6px; }
+  .hint { color: var(--muted); margin: 0 0 20px; font-size: 15px; }
+  #idForm { display: flex; gap: 10px; }
+  #idForm input { flex: 1; min-width: 0; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line);
+                  background: var(--tile); color: var(--fg); font: 16px Inter, system-ui; }
   #idForm input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  #idForm button { padding: 10px 16px; border: 0; border-radius: 10px; background: var(--accent); color: #fff;
-                   font: 600 14px Inter, system-ui; cursor: pointer; }
+  .btn { padding: 14px 22px; border: 0; border-radius: 12px; background: var(--accent); color: #fff;
+         font: 600 16px Inter, system-ui; cursor: pointer; }
+  .btn.secondary { background: var(--tile); color: var(--fg); border: 1px solid var(--line); }
+  .or { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: var(--muted); font-size: 13px; }
+  .or::before, .or::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+  #demoBtn { width: 100%; }
 
   .progress { margin: 16px 0 14px; }
   .progress .bar { height: 8px; border-radius: 99px; background: var(--tile); overflow: hidden; }
@@ -87,6 +93,9 @@
 
   @media (max-width: 700px) {
     #panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 48%; padding: 14px; }
+    #panel.welcome { width: auto; max-height: none; padding: 20px; }
+    .welcome h1 { font-size: 22px; }
+    #idForm { flex-direction: column; }
     #profileCard { display: none; }
     .leaflet-bottom { bottom: calc(48% + 16px); }
     .stat .v { font-size: 18px; }
@@ -129,7 +138,8 @@
 const params = new URLSearchParams(location.search);
 const SHARE_ID = params.get('id')?.trim();
 const APIKEY = params.get('apikey') || window.MAPY_API_KEY; // mapy.cz key, from .env via /config.js
-const POLL_MS = +(params.get('poll') || 10000);
+const IS_DEMO = SHARE_ID === 'demo'; // simulated ride served by mock.py, polled faster so it moves smoothly
+const POLL_MS = +(params.get('poll') || (IS_DEMO ? 2000 : 10000));
 const $ = id => document.getElementById(id);
 
 // ---------- map ----------
@@ -488,14 +498,18 @@ const parseTrackingId = input => input.trim().replace(/[?#].*$/, '').replace(/\/
 if (!SHARE_ID) {
   $('profileCard').style.display = 'none';
   $('followBtn').style.display = 'none';
+  $('panel').classList.add('welcome');
   $('panel').innerHTML = `
     <h1>Follow a ride</h1>
     <p class="hint">Paste a Hammerhead live tracking link or ID.</p>
     <form id="idForm">
       <input id="idInput" placeholder="https://dashboard.hammerhead.io/live/…" autofocus autocomplete="off">
-      <button>Track</button>
+      <button class="btn">Track</button>
     </form>
-    <div id="error"></div>`;
+    <div id="error"></div>
+    <div class="or">or</div>
+    <button id="demoBtn" class="btn secondary">▶ Try the demo ride</button>`;
+  $('demoBtn').onclick = () => { params.set('id', 'demo'); location.search = params; };
   $('idForm').onsubmit = e => {
     e.preventDefault();
     const id = parseTrackingId($('idInput').value);

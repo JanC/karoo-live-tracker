@@ -2,9 +2,9 @@
 
 Replays demo/ride.gpx (or DEMO_GPX) using its own timestamps, so real stops show up as
 "paused". Without a GPX it falls back to the route in response/live.json with modelled
-speeds and one coffee stop. By default it is a frozen snapshot halfway through the ride;
-with DEMO_SPEED=N it starts there and plays at N x real time, finishes and loops. The response mimics the Hammerhead API, using
-live.json as the template.
+speeds and one coffee stop. It starts halfway through the ride on the first demo request and
+plays at DEMO_SPEED x real time (default 20), finishes and loops. DEMO_SPEED=0 freezes it for
+screenshots. The response mimics the Hammerhead API, using live.json as the template.
 """
 import bisect
 import json
@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE = os.path.join(HERE, "response", "live.json")
 GPX = os.environ.get("DEMO_GPX", os.path.join(HERE, "demo", "ride.gpx"))
-SPEED_FACTOR = float(os.environ.get("DEMO_SPEED", 0))  # 0 = frozen snapshot (for screenshots)
+SPEED_FACTOR = float(os.environ.get("DEMO_SPEED", 20))  # 0 = frozen snapshot (for screenshots)
 START_AT = 0.5          # fraction of the ride time where the demo starts
 STOP_GAP = 60           # a gap between GPX points longer than this (s) counts as a stop
 BASE_KMH = 25           # fallback model only
