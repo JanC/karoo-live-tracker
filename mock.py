@@ -1,13 +1,12 @@
 """Simulated ride for demos, served by server.py for tracking id "demo".
 
-Replays demo/ride.gpx (or DEMO_GPX) using its own timestamps, so real stops show up as
-"paused". Without a GPX it falls back to the route in response/live.json with modelled
-speeds and one coffee stop. It starts halfway through the ride on the first demo request and
-plays at DEMO_SPEED x real time (default 20), finishes and loops. DEMO_SPEED=0 freezes it for
-screenshots. The response mimics the Hammerhead API, using live.json as the template.
+Replays demo/ride.gpx (or DEMO_GPX) using its own timestamps, so gaps show up as "paused".
+A GPX without timestamps gets modelled speeds and one coffee stop. It starts halfway through
+the ride on the first demo request and plays at DEMO_SPEED x real time (default 20),
+finishes and loops. DEMO_SPEED=0 freezes it for screenshots. The response has the same shape
+as the Hammerhead share API (see response/example.json).
 """
 import bisect
-import json
 import math
 import os
 import time
@@ -15,34 +14,14 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE = os.path.join(HERE, "response", "live.json")
 GPX = os.environ.get("DEMO_GPX", os.path.join(HERE, "demo", "ride.gpx"))
 SPEED_FACTOR = float(os.environ.get("DEMO_SPEED", 20))  # 0 = frozen snapshot (for screenshots)
 START_AT = 0.5          # fraction of the ride time where the demo starts
 STOP_GAP = 60           # a gap between GPX points longer than this (s) counts as a stop
-BASE_KMH = 25           # fallback model only
-STOP_AT = 0.6           # fallback model: coffee stop at this fraction of the route
-STOP_SECONDS = 20 * 60  # fallback model: coffee stop length
+BASE_KMH = 25           # GPX without timestamps only
+STOP_AT = 0.6           # GPX without timestamps: coffee stop at this fraction of the route
+STOP_SECONDS = 20 * 60  # GPX without timestamps: coffee stop length
 FINISHED_SECONDS = 90   # ride time the "finished" state is shown before looping
-
-
-def decode(s, dim=2, factor=1e5):
-    out, prev, i = [], [0] * dim, 0
-    while i < len(s):
-        pt = []
-        for k in range(dim):
-            r = sh = 0
-            while True:
-                b = ord(s[i]) - 63
-                i += 1
-                r |= (b & 0x1F) << sh
-                sh += 5
-                if b < 0x20:
-                    break
-            prev[k] += ~(r >> 1) if r & 1 else r >> 1
-            pt.append(prev[k] / factor)
-        out.append(pt if dim > 1 else pt[0])
-    return out
 
 
 def encode(points):
@@ -114,44 +93,32 @@ def load_gpx(path):
 
 
 # ---------- build the demo ride: points, ride time per point, stops, elevation profile ----------
-template = json.load(open(TEMPLATE))
-source = "template"
-if os.path.exists(GPX):
-    name, raw_pts, raw_ele, raw_t = load_gpx(GPX)
-    # Thin to ~10 m spacing (keeps the trace light) but keep both ends of every stop.
-    keep = [0]
-    for i in range(1, len(raw_pts)):
-        big_gap_next = raw_t and i + 1 < len(raw_t) and raw_t[i + 1] - raw_t[i] > STOP_GAP
-        big_gap_prev = raw_t and raw_t[i] - raw_t[i - 1] > STOP_GAP
-        if big_gap_next or big_gap_prev or i == len(raw_pts) - 1 or haversine(raw_pts[keep[-1]], raw_pts[i]) >= 10:
-            keep.append(i)
-    pts = [raw_pts[i] for i in keep]
-    pt_ele = [raw_ele[i] for i in keep]
-    t_at = [raw_t[i] for i in keep] if raw_t else None
-    route_name = name or os.path.splitext(os.path.basename(GPX))[0]
-    source = "gpx"
-else:
-    route_name = template["route"]["name"]
-    pts = decode(template["route"]["routePolyline"])
-    pt_ele = None
-    t_at = None
+name, raw_pts, raw_ele, raw_t = load_gpx(GPX)
+# Thin to ~10 m spacing (keeps the trace light) but keep both ends of every stop.
+keep = [0]
+for i in range(1, len(raw_pts)):
+    big_gap_next = raw_t and i + 1 < len(raw_t) and raw_t[i + 1] - raw_t[i] > STOP_GAP
+    big_gap_prev = raw_t and raw_t[i] - raw_t[i - 1] > STOP_GAP
+    if big_gap_next or big_gap_prev or i == len(raw_pts) - 1 or haversine(raw_pts[keep[-1]], raw_pts[i]) >= 10:
+        keep.append(i)
+pts = [raw_pts[i] for i in keep]
+pt_ele = [raw_ele[i] for i in keep]
+t_at = [raw_t[i] for i in keep] if raw_t else None
+route_name = name or os.path.splitext(os.path.basename(GPX))[0]
 
 cum = cumulative(pts)
 total = cum[-1]
 
 # Elevation profile sampled every ~25 m along the route (what the page's chart expects).
-if pt_ele:
-    n = max(2, int(total / 25))
-    elev, j = [], 0
-    for k in range(n):
-        d = k / (n - 1) * total
-        while j < len(cum) - 2 and cum[j + 1] < d:
-            j += 1
-        span = cum[j + 1] - cum[j]
-        f = (d - cum[j]) / span if span else 0
-        elev.append(pt_ele[j] + (pt_ele[j + 1] - pt_ele[j]) * f)
-else:
-    elev = decode(template["route"]["elevation"]["polyline"], dim=1)
+n = max(2, int(total / 25))
+elev, j = [], 0
+for k in range(n):
+    d = k / (n - 1) * total
+    while j < len(cum) - 2 and cum[j + 1] < d:
+        j += 1
+    span = cum[j + 1] - cum[j]
+    f = (d - cum[j]) / span if span else 0
+    elev.append(pt_ele[j] + (pt_ele[j + 1] - pt_ele[j]) * f)
 gain_cum = [0.0]
 for a, b in zip(elev, elev[1:]):
     gain_cum.append(gain_cum[-1] + max(0, b - a))
@@ -183,16 +150,15 @@ stationary_before = [0.0]  # stationary seconds accumulated before each point
 for i in range(1, len(pts)):
     stationary_before.append(stationary_before[-1] + stops.get(i - 1, 0))
 
-e = template["route"]["elevation"]
 route = {
-    **template["route"],
     "name": route_name,
-    "distance": total,
+    "elevation": {"gain": gain_cum[-1], "loss": sum(max(0, a - b) for a, b in zip(elev, elev[1:])),
+                  "min": min(elev), "max": max(elev), "source": "gpx", "polyline": encode_values(elev)},
+    "pointsOfInterest": None,
     "routePolyline": encode(pts),
-    "elevation": {**e, "gain": gain_cum[-1], "loss": sum(max(0, a - b) for a, b in zip(elev, elev[1:])),
-                  "min": min(elev), "max": max(elev), "source": source, "polyline": encode_values(elev)},
     "waypoints": [{"lat": pts[0][0], "lng": pts[0][1], "waypointType": "BREAK", "polylineIndex": 0},
                   {"lat": pts[-1][0], "lng": pts[-1][1], "waypointType": "BREAK", "polylineIndex": len(pts) - 1}],
+    "distance": total,
 }
 
 CYCLE = ride_total + FINISHED_SECONDS
@@ -251,17 +217,17 @@ def response():
         "TYPE_STATIONARY_TIME_ID": stationary * 1000,
         "TYPE_TIME_OF_ARRIVAL_ID": eta * 1000,
     }
-    return {
-        **template,
+    return {  # same field order as the Hammerhead share API
         "activityId": "demo-activity",
-        "routeId": "demo.route",
-        "id": "demo.tracking",
-        "route": route,
         "state": state,
         "location": {"lat": round(loc[0], 5), "lng": round(loc[1], 5)},
-        "bearing": round(bearing(a, ahead), 1) if a != ahead else template["bearing"],
+        "bearing": round(bearing(a, ahead), 1) if a != ahead else 0,
         "activityInfo": [{"key": k, "value": {"format": "double", "value": v}} for k, v in info.items()],
+        "units": "METRIC",
+        "routeId": "demo.route",
         "userTrace": encode(pts[: idx + 1] + [loc]),
+        "id": "demo.tracking",
+        "route": route,
         "riderName": "Demo Rider",
         "createdAt": iso(loop_start),
         "updatedAt": iso(now),
