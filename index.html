@@ -35,6 +35,13 @@
   #rider { color: var(--muted); font-size: 13px; }
   #error { color: var(--accent); font-size: 12px; margin-top: 6px; }
   #error:empty { display: none; }
+  .hint { color: var(--muted); margin: 4px 0 14px; }
+  #idForm { display: flex; gap: 8px; }
+  #idForm input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+                  background: var(--tile); color: var(--fg); font: 14px Inter, system-ui; }
+  #idForm input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #idForm button { padding: 10px 16px; border: 0; border-radius: 10px; background: var(--accent); color: #fff;
+                   font: 600 14px Inter, system-ui; cursor: pointer; }
 
   .progress { margin: 16px 0 14px; }
   .progress .bar { height: 8px; border-radius: 99px; background: var(--tile); overflow: hidden; }
@@ -475,11 +482,27 @@ async function poll() {
   }
 }
 
+// Accepts a bare ID or any Hammerhead link ending in it, e.g. https://dashboard.hammerhead.io/live/AbCd1234
+const parseTrackingId = input => input.trim().replace(/[?#].*$/, '').replace(/\/+$/, '').split('/').pop().match(/^[A-Za-z0-9_-]+$/)?.[0];
+
 if (!SHARE_ID) {
-  $('routeName').textContent = 'No tracking ID';
-  $('state').style.display = 'none';
-  $('error').textContent = 'Add ?id=<tracking id> to the URL, e.g. ?id=AbCd1234';
   $('profileCard').style.display = 'none';
+  $('followBtn').style.display = 'none';
+  $('panel').innerHTML = `
+    <h1>Follow a ride</h1>
+    <p class="hint">Paste a Hammerhead live tracking link or ID.</p>
+    <form id="idForm">
+      <input id="idInput" placeholder="https://dashboard.hammerhead.io/live/…" autofocus autocomplete="off">
+      <button>Track</button>
+    </form>
+    <div id="error"></div>`;
+  $('idForm').onsubmit = e => {
+    e.preventDefault();
+    const id = parseTrackingId($('idInput').value);
+    if (!id) { $('error').textContent = 'That doesn’t look like a Hammerhead tracking link or ID.'; return; }
+    params.set('id', id);
+    location.search = params;
+  };
   map.setView([49.8, 15.5], 7);
 } else {
   setInterval(() => { if (lastData?.updatedAt) $('updated').textContent = `updated ${ago(lastData.updatedAt)}`; }, 1000);
