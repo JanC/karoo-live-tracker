@@ -71,6 +71,11 @@
   .leaflet-control-attribution { font-size: 10px; }
   .leaflet-bottom { bottom: 170px; }
   .leaflet-top.leaflet-right { top: 60px; } /* zoom buttons below the follow button */
+  .leaflet-control-layers { border: 0 !important; border-radius: 12px !important; box-shadow: var(--shadow) !important;
+                            background: var(--bg) !important; color: var(--fg); backdrop-filter: blur(12px); }
+  .leaflet-control-layers-expanded { padding: 10px 14px 10px 10px; font: 13px Inter, system-ui; }
+  .leaflet-control-layers label { margin: 3px 0; cursor: pointer; }
+  .leaflet-control-layers-separator { border-top-color: var(--line) !important; }
   .leaflet-control-zoom { border: 0 !important; box-shadow: var(--shadow) !important; border-radius: 12px !important; overflow: hidden; }
 
   @media (max-width: 700px) {
@@ -117,28 +122,84 @@
 const params = new URLSearchParams(location.search);
 const SHARE_ID = params.get('id')?.trim();
 const APIKEY = params.get('apikey') || window.MAPY_API_KEY; // mapy.cz key, from .env via /config.js
-const MAPSET = params.get('mapset') || 'outdoor'; // basic | outdoor | aerial | winter
 const POLL_MS = +(params.get('poll') || 10000);
 const $ = id => document.getElementById(id);
 
 // ---------- map ----------
 const map = L.map('map', { zoomControl: false });
 L.control.zoom({ position: 'topright' }).addTo(map);
+// ---------- base maps + overlays ----------
+const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors';
+const mapy = set => L.tileLayer(`https://api.mapy.com/v1/maptiles/${set}/256/{z}/{x}/{y}?apikey=${APIKEY}`, {
+  maxZoom: 19, attribution: '<a href="https://api.mapy.com/copyright" target="_blank">&copy; Seznam.cz a.s. a další</a>' });
+
+const BASES = {}; // id -> [label, layer]
 if (APIKEY) {
-  L.tileLayer(`https://api.mapy.com/v1/maptiles/${MAPSET}/256/{z}/{x}/{y}?apikey=${APIKEY}`, {
-    minZoom: 0, maxZoom: 19,
-    attribution: '<a href="https://api.mapy.com/copyright" target="_blank">&copy; Seznam.cz a.s. a další</a>',
-  }).addTo(map);
-  // mapy.com terms require their logo on the map
-  const Logo = L.Control.extend({ options: { position: 'bottomleft' }, onAdd() {
-    const a = L.DomUtil.create('a'); a.href = 'http://mapy.com/'; a.target = '_blank';
-    a.innerHTML = '<img src="https://api.mapy.com/img/api/logo.svg">'; return a; } });
-  new Logo().addTo(map);
-} else {
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map);
+  BASES.outdoor = ['Mapy.cz Outdoor', mapy('outdoor')];
+  BASES.basic = ['Mapy.cz Basic', mapy('basic')];
+  BASES.aerial = ['Mapy.cz Aerial', L.layerGroup([mapy('aerial'), mapy('names-overlay')])];
 }
+BASES.cyclosm = ['CyclOSM', L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
+  maxZoom: 20, attribution: '<a href="https://www.cyclosm.org" target="_blank">CyclOSM</a> | ' + OSM_ATTR })];
+BASES.topo = ['OpenTopoMap', L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+  maxZoom: 17, attribution: 'Map style &copy; <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> | ' + OSM_ATTR })];
+BASES.osm = ['OpenStreetMap', L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: OSM_ATTR })];
+
+// RainViewer radar: tile path changes every 10 min, so fetch it when the layer is shown and refresh.
+const rain = L.tileLayer('', { opacity: 0.6, maxNativeZoom: 7, maxZoom: 20, zIndex: 5,
+  attribution: '<a href="https://www.rainviewer.com" target="_blank">RainViewer</a>' });
+async function refreshRain() {
+  try {
+    const r = await (await fetch('https://api.rainviewer.com/public/weather-maps.json')).json();
+    const frame = r.radar.past.at(-1);
+    rain.setUrl(`${r.host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`);
+  } catch (e) { console.warn('rain radar unavailable', e); }
+}
+let rainTimer;
+rain.on('add', () => { refreshRain(); rainTimer = setInterval(refreshRain, 10 * 60 * 1000); });
+rain.on('remove', () => clearInterval(rainTimer));
+
+const waymarked = type => L.tileLayer(`https://tile.waymarkedtrails.org/${type}/{z}/{x}/{y}.png`, {
+  maxZoom: 18, zIndex: 4, attribution: '<a href="https://waymarkedtrails.org" target="_blank">Waymarked Trails</a>' });
+const OVERLAYS = { // id -> [label, layer]
+  cycling: ['Cycle routes', waymarked('cycling')],
+  mtb: ['MTB trails', waymarked('mtb')],
+  rain: ['Rain radar', rain],
+};
+
+// mapy.com terms require their logo on the map while their tiles are shown
+const Logo = L.Control.extend({ options: { position: 'bottomleft' }, onAdd() {
+  const a = L.DomUtil.create('a'); a.href = 'http://mapy.com/'; a.target = '_blank';
+  a.innerHTML = '<img src="https://api.mapy.com/img/api/logo.svg">'; return a; } });
+const logo = new Logo();
+
+// Selection: ?base=cyclosm&overlays=cycling,rain beats the saved choice, which beats the default.
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+let baseId = params.get('base') || store.get('map:base') || (APIKEY ? 'outdoor' : 'cyclosm');
+if (!BASES[baseId]) baseId = Object.keys(BASES)[0];
+const overlayIds = new Set((params.get('overlays') ?? store.get('map:overlays') ?? '').split(',').filter(id => OVERLAYS[id]));
+
+const idOf = (dict, layer) => Object.keys(dict).find(id => dict[id][1] === layer);
+const setBase = id => {
+  baseId = id; store.set('map:base', id);
+  ['outdoor', 'basic', 'aerial'].includes(id) ? logo.addTo(map) : logo.remove();
+};
+BASES[baseId][1].addTo(map); setBase(baseId);
+overlayIds.forEach(id => OVERLAYS[id][1].addTo(map));
+
+L.control.layers(
+  Object.fromEntries(Object.values(BASES)),
+  Object.fromEntries(Object.values(OVERLAYS)),
+  { position: 'topright' },
+).addTo(map);
+map.on('baselayerchange', e => setBase(idOf(BASES, e.layer)));
+map.on('overlayadd overlayremove', e => {
+  const id = idOf(OVERLAYS, e.layer);
+  e.type === 'overlayadd' ? overlayIds.add(id) : overlayIds.delete(id);
+  store.set('map:overlays', [...overlayIds].join(','));
+});
 
 const routeCasing = L.polyline([], { color: '#fff', weight: 9, opacity: 0.8 }).addTo(map);
 const routeLine = L.polyline([], { color: '#3b82f6', weight: 5, opacity: 0.85 }).addTo(map);
