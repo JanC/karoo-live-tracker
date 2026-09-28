@@ -4,6 +4,8 @@ import http.server
 import json
 import os
 import re
+import signal
+import sys
 import urllib.error
 import urllib.request
 
@@ -78,5 +80,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"http://localhost:{PORT}/?id=AbCd1234")
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # PID 1 in Docker gets no default SIGTERM handling
+    print(f"http://localhost:{PORT}/  (demo: http://localhost:{PORT}/?id={DEMO_ID})")
     http.server.ThreadingHTTPServer(("", PORT), Handler).serve_forever()

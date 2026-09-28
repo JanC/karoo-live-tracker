@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8765:8765"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "8765"  # must match the container side of `ports`; change the host side to move it
+    volumes:
+      - cache:/app/cache  # last good tracking responses survive restarts
+    restart: unless-stopped
+
+volumes:
+  cache:
