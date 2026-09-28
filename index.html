@@ -1,0 +1,433 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hammerhead Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: rgba(255,255,255,.92); --fg: #0f172a; --muted: #64748b; --line: #e2e8f0;
+    --tile: #f1f5f9; --accent: #e11d48; --route: #3b82f6; --ok: #16a34a; --warn: #f59e0b;
+    --shadow: 0 10px 30px rgba(15,23,42,.18), 0 2px 6px rgba(15,23,42,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: rgba(15,23,42,.9); --fg: #f1f5f9; --muted: #94a3b8; --line: #1e293b; --tile: #1e293b; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0f172a; color: var(--fg);
+               font: 14px/1.4 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  #map { position: absolute; inset: 0; }
+  .card { position: absolute; z-index: 1000; background: var(--bg); backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px); border-radius: 16px; box-shadow: var(--shadow); }
+
+  #panel { top: 16px; left: 16px; width: 360px; max-height: calc(100% - 200px); overflow: auto; padding: 18px; }
+  .eyebrow { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px;
+          background: var(--ok); color: #fff; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+  .pill.live .dot { animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.8); } 100% { box-shadow: 0 0 0 8px rgba(255,255,255,0); } }
+  h1 { margin: 10px 0 2px; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+  #rider { color: var(--muted); font-size: 13px; }
+  #error { color: var(--accent); font-size: 12px; margin-top: 6px; }
+  #error:empty { display: none; }
+
+  .progress { margin: 16px 0 14px; }
+  .progress .bar { height: 8px; border-radius: 99px; background: var(--tile); overflow: hidden; }
+  .progress .fill { height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, #fb7185, var(--accent));
+                    transition: width .6s ease; }
+  .progress .labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .progress .labels b { color: var(--fg); font-weight: 600; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--tile); border-radius: 12px; padding: 10px 12px; }
+  .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 500; }
+  .stat .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; margin-top: 2px; }
+  .stat .v small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+  .battery { display: inline-block; width: 26px; height: 12px; border: 2px solid currentColor; border-radius: 3px;
+             position: relative; margin-left: 6px; vertical-align: 1px; opacity: .7; }
+  .battery i { position: absolute; inset: 1px auto 1px 1px; background: currentColor; border-radius: 1px; }
+
+  details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+  summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  h3 { margin: 12px 0 4px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 5px 0; border-bottom: 1px solid var(--line); }
+  td:last-child { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .id { color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; }
+
+  #profileCard { left: 16px; right: 16px; bottom: 16px; height: 150px; padding: 12px 16px 8px; }
+  #profileCard .head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  #profileCard .head b { color: var(--fg); }
+  #profile { width: 100%; height: calc(100% - 20px); display: block; }
+
+  #followBtn { top: 16px; right: 16px; border: 0; padding: 10px 14px; font: 600 13px Inter, system-ui; color: var(--fg);
+               cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  #followBtn.on { background: var(--accent); color: #fff; }
+  .leaflet-control-attribution { font-size: 10px; }
+  .leaflet-bottom { bottom: 170px; }
+  .leaflet-top.leaflet-right { top: 60px; } /* zoom buttons below the follow button */
+  .leaflet-control-zoom { border: 0 !important; box-shadow: var(--shadow) !important; border-radius: 12px !important; overflow: hidden; }
+
+  @media (max-width: 700px) {
+    #panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 48%; padding: 14px; }
+    #profileCard { display: none; }
+    .leaflet-bottom { bottom: calc(48% + 16px); }
+    .stat .v { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<button id="followBtn" class="card on" title="Keep the rider centered">◎ Following</button>
+
+<div id="panel" class="card">
+  <div class="eyebrow"><span id="state" class="pill"><span class="dot"></span><span>…</span></span><span id="updated"></span></div>
+  <h1 id="routeName">Loading…</h1>
+  <div id="rider"></div>
+  <div id="error"></div>
+
+  <div class="progress">
+    <div class="bar"><div class="fill" id="progFill"></div></div>
+    <div class="labels"><span id="progDone"></span><span id="progLeft"></span></div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <details>
+    <summary>Details</summary>
+    <h3>Position</h3><table id="progress"></table>
+    <h3>Planned route</h3><table id="route"></table>
+    <h3>Other</h3><table id="meta"></table>
+  </details>
+</div>
+
+<div id="profileCard" class="card">
+  <div class="head"><span>Elevation profile</span><span id="profileInfo"></span></div>
+  <canvas id="profile"></canvas>
+</div>
+
+<script src="config.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const SHARE_ID = params.get('id')?.trim();
+const APIKEY = params.get('apikey') || window.MAPY_API_KEY; // mapy.cz key, from .env via /config.js
+const MAPSET = params.get('mapset') || 'outdoor'; // basic | outdoor | aerial | winter
+const POLL_MS = +(params.get('poll') || 10000);
+const $ = id => document.getElementById(id);
+
+// ---------- map ----------
+const map = L.map('map', { zoomControl: false });
+L.control.zoom({ position: 'topright' }).addTo(map);
+if (APIKEY) {
+  L.tileLayer(`https://api.mapy.com/v1/maptiles/${MAPSET}/256/{z}/{x}/{y}?apikey=${APIKEY}`, {
+    minZoom: 0, maxZoom: 19,
+    attribution: '<a href="https://api.mapy.com/copyright" target="_blank">&copy; Seznam.cz a.s. a další</a>',
+  }).addTo(map);
+  // mapy.com terms require their logo on the map
+  const Logo = L.Control.extend({ options: { position: 'bottomleft' }, onAdd() {
+    const a = L.DomUtil.create('a'); a.href = 'http://mapy.com/'; a.target = '_blank';
+    a.innerHTML = '<img src="https://api.mapy.com/img/api/logo.svg">'; return a; } });
+  new Logo().addTo(map);
+} else {
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+}
+
+const routeCasing = L.polyline([], { color: '#fff', weight: 9, opacity: 0.8 }).addTo(map);
+const routeLine = L.polyline([], { color: '#3b82f6', weight: 5, opacity: 0.85 }).addTo(map);
+const traceCasing = L.polyline([], { color: '#fff', weight: 8 }).addTo(map);
+const traceLine = L.polyline([], { color: '#e11d48', weight: 5 }).addTo(map);
+const waypointLayer = L.layerGroup().addTo(map);
+const riderIcon = (bearing) => L.divIcon({ className: '', iconSize: [36, 36], iconAnchor: [18, 18],
+  html: `<svg width="36" height="36" viewBox="0 0 36 36" style="transform:rotate(${bearing}deg);filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">
+    <circle cx="18" cy="18" r="15" fill="#e11d48" stroke="#fff" stroke-width="3"/>
+    <path d="M18 8 L25 25 L18 20.5 L11 25 Z" fill="#fff"/></svg>` });
+const riderMarker = L.marker([0, 0], { icon: riderIcon(0), zIndexOffset: 1000 });
+
+// Pan so loc sits in the middle of the map area not covered by the floating cards.
+function centerOn(loc) {
+  const narrow = innerWidth <= 700;
+  const panel = $('panel').getBoundingClientRect(), prof = $('profileCard').getBoundingClientRect();
+  const left = narrow ? 0 : panel.right;
+  const bottom = narrow ? innerHeight - panel.top : (prof.height ? innerHeight - prof.top : 0);
+  const pt = map.project(loc, map.getZoom()).add([-left / 2, bottom / 2]);
+  map.panTo(map.unproject(pt, map.getZoom()));
+}
+
+let follow = true;
+$('followBtn').onclick = () => {
+  follow = !follow;
+  $('followBtn').classList.toggle('on', follow);
+  $('followBtn').textContent = follow ? '◎ Following' : '○ Follow rider';
+  if (follow && lastData?.location) centerOn([lastData.location.lat, lastData.location.lng]);
+};
+map.on('dragstart', () => { if (follow) $('followBtn').click(); });
+
+// ---------- helpers ----------
+function decodePolyline(str, dim = 2, factor = 1e5) {
+  const out = [], prev = new Array(dim).fill(0);
+  let i = 0;
+  while (i < str.length) {
+    const pt = [];
+    for (let k = 0; k < dim; k++) {
+      let r = 0, sh = 0, b;
+      do { b = str.charCodeAt(i++) - 63; r |= (b & 0x1f) << sh; sh += 5; } while (b >= 0x20);
+      prev[k] += (r & 1) ? ~(r >> 1) : (r >> 1);
+      pt.push(prev[k] / factor);
+    }
+    out.push(dim === 1 ? pt[0] : pt);
+  }
+  return out;
+}
+function haversine(a, b) {
+  const R = 6371000, rad = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * rad, dLng = (b[1] - a[1]) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const km = m => (m / 1000).toFixed(1) + ' km';
+const m0 = m => Math.round(m) + ' m';
+const dur = ms => { const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+const time = t => new Date(t).toLocaleString();
+const hhmm = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const ago = t => { const s = Math.max(0, Math.round((Date.now() - new Date(t)) / 1000));
+  return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h ago`; };
+const setRows = (id, rows) => $(id).innerHTML =
+  rows.filter(r => r[1] != null).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+const unit = (v, u) => `${v}<small>${u}</small>`;
+
+// activityInfo keys -> tile label + value html. Unknown keys get a tile with the raw value.
+const INFO = {
+  TYPE_DISTANCE_ID: ['Distance', v => unit((v / 1000).toFixed(1), 'km')],
+  TYPE_ELAPSED_TIME_ID: ['Elapsed', dur],
+  TYPE_AVERAGE_SPEED_ID: ['Avg speed', v => unit((v * 3.6).toFixed(1), 'km/h')],
+  TYPE_ELEVATION_GAIN_ID: ['Climbed', v => unit(Math.round(v), 'm')],
+  TYPE_TIME_OF_ARRIVAL_ID: ['ETA', hhmm],
+  TYPE_BATTERY_PERCENT_ID: ['Battery', v => unit(Math.round(v), '%') +
+    `<span class="battery" style="color:${v < 20 ? '#e11d48' : 'inherit'}"><i style="width:${Math.max(0, Math.min(100, v)) * .85}%"></i></span>`],
+  TYPE_STATIONARY_TIME_ID: ['Stopped', dur],
+};
+const prettyKey = k => k.replace(/^TYPE_|_ID$/g, '').toLowerCase().replace(/_/g, ' ');
+
+// ---------- state ----------
+let routeCache = null; // { polyline, pts, cum, elev, distance }
+let lastData = null;
+let lastAlong = null;
+let fitted = false;
+
+function prepareRoute(route) {
+  const pts = decodePolyline(route.routePolyline);
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + haversine(pts[i - 1], pts[i]));
+  const elev = route.elevation?.polyline ? decodePolyline(route.elevation.polyline, 1) : [];
+  return { polyline: route.routePolyline, pts, cum, elev, distance: route.distance || cum.at(-1) };
+}
+
+function distanceAlongRoute(loc) {
+  const { pts, cum } = routeCache;
+  let best = Infinity, idx = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const d = haversine(pts[i], loc);
+    if (d < best) { best = d; idx = i; }
+  }
+  return { along: cum[idx] / cum.at(-1) * routeCache.distance, offRoute: best };
+}
+
+function render(d) {
+  lastData = d;
+  const loc = d.location ? [d.location.lat, d.location.lng] : null;
+
+  // route (only re-decode when it changes)
+  if (d.route?.routePolyline && d.route.routePolyline !== routeCache?.polyline) {
+    routeCache = prepareRoute(d.route);
+    routeLine.setLatLngs(routeCache.pts); routeCasing.setLatLngs(routeCache.pts);
+    waypointLayer.clearLayers();
+    (d.route.waypoints || []).forEach((w, i, arr) => {
+      const label = i === 0 ? 'Start' : i === arr.length - 1 ? 'Finish' : `Waypoint ${i}`;
+      L.circleMarker([w.lat, w.lng], { radius: 8, color: '#fff', weight: 3, fillOpacity: 1,
+        fillColor: i === 0 ? '#16a34a' : i === arr.length - 1 ? '#0f172a' : '#f59e0b' })
+        .bindTooltip(`${label} · ${w.waypointType}`).addTo(waypointLayer);
+    });
+    (d.route.pointsOfInterest || []).forEach(p => {
+      if (p.lat != null) L.marker([p.lat, p.lng]).bindPopup(p.name || p.type || 'POI').addTo(waypointLayer);
+    });
+  }
+
+  // ridden trace
+  if (d.userTrace) { const t = decodePolyline(d.userTrace); traceLine.setLatLngs(t); traceCasing.setLatLngs(t); }
+
+  // rider
+  if (loc) {
+    riderMarker.setLatLng(loc).setIcon(riderIcon(d.bearing || 0)).addTo(map);
+    riderMarker.bindTooltip(`${d.riderName?.trim() || 'Rider'} · ${d.state}`);
+  }
+  if (!fitted) {
+    const b = routeLine.getBounds().isValid() ? routeLine.getBounds() : traceLine.getBounds();
+    const narrow = innerWidth <= 700;
+    if (b.isValid()) map.fitBounds(b, narrow ? { paddingTopLeft: [20, 20], paddingBottomRight: [20, innerHeight * .5] }
+                                             : { paddingTopLeft: [400, 40], paddingBottomRight: [40, 190] });
+    else if (loc) map.setView(loc, 14);
+    fitted = true;
+  } else if (loc && follow) {
+    centerOn(loc);
+  }
+
+  // header
+  $('routeName').textContent = d.route?.name || 'Live tracking';
+  const st = $('state');
+  st.lastElementChild.textContent = d.state || 'unknown';
+  st.classList.toggle('live', d.state === 'riding');
+  st.style.background = d.state === 'riding' ? 'var(--ok)' : d.state === 'paused' ? 'var(--warn)' : 'var(--muted)';
+  $('rider').textContent = d.riderName?.trim() || '';
+
+  // stat tiles
+  const info = {};
+  (d.activityInfo || []).forEach(({ key, value }) => info[key] = value?.value);
+  const known = Object.keys(INFO).filter(k => k in info);
+  const unknown = Object.keys(info).filter(k => !(k in INFO));
+  $('stats').innerHTML = [
+    ...known.map(k => [INFO[k][0], INFO[k][1](info[k])]),
+    ...unknown.map(k => [prettyKey(k), typeof info[k] === 'number' ? +info[k].toFixed(2) : info[k]]),
+  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+
+  // progress
+  let prog = null;
+  if (routeCache && loc) {
+    prog = distanceAlongRoute(loc);
+    lastAlong = prog.along;
+    const pct = prog.along / routeCache.distance * 100;
+    $('progFill').style.width = pct + '%';
+    $('progDone').innerHTML = `<b>${km(prog.along)}</b> of ${km(routeCache.distance)} · ${pct.toFixed(0)}%`;
+    $('progLeft').innerHTML = `<b>${km(routeCache.distance - prog.along)}</b> to go`;
+    const elevAt = routeCache.elev.length
+      ? routeCache.elev[Math.round(prog.along / routeCache.distance * (routeCache.elev.length - 1))] : null;
+    setRows('progress', [
+      ['Coordinates', `${loc[0].toFixed(5)}, ${loc[1].toFixed(5)}`],
+      ['Heading', d.bearing != null ? Math.round(d.bearing) + '°' : null],
+      ['Elevation (from route)', elevAt != null ? m0(elevAt) : null],
+      ['Off route by', m0(prog.offRoute)],
+      ['ETA', info.TYPE_TIME_OF_ARRIVAL_ID ? time(info.TYPE_TIME_OF_ARRIVAL_ID) : null],
+    ]);
+  }
+
+  const e = d.route?.elevation || {};
+  setRows('route', [
+    ['Distance', d.route?.distance ? km(d.route.distance) : null],
+    ['Elevation gain / loss', e.gain != null ? `${m0(e.gain)} / ${m0(e.loss)}` : null],
+    ['Min / max elevation', e.min != null ? `${m0(e.min)} / ${m0(e.max)}` : null],
+    ['Elevation source', e.source],
+    ['Waypoints', d.route?.waypoints?.length],
+  ]);
+  $('profileInfo').innerHTML = e.gain != null
+    ? `↑ <b>${m0(e.gain)}</b> &nbsp; ↓ <b>${m0(e.loss)}</b> &nbsp; ${m0(e.min)}–${m0(e.max)}` : '';
+
+  setRows('meta', [
+    ['Units', d.units],
+    ['Tracking started', d.createdAt ? time(d.createdAt) : null],
+    ['Last update', d.updatedAt ? time(d.updatedAt) : null],
+    ['Activity ID', `<span class="id">${d.activityId}</span>`],
+    ['Route ID', `<span class="id">${d.routeId}</span>`],
+    ['Tracking ID', `<span class="id">${d.id}</span>`],
+  ]);
+
+  drawProfile(lastAlong);
+}
+
+function drawProfile(along) {
+  const c = $('profile');
+  if (!c.clientWidth) return;
+  c.width = c.clientWidth * devicePixelRatio; c.height = c.clientHeight * devicePixelRatio;
+  const ctx = c.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  const W = c.clientWidth, H = c.clientHeight, padX = 44, padT = 8, padB = 18;
+  const elev = routeCache?.elev;
+  if (!elev?.length) return;
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const min = Math.min(...elev), max = Math.max(...elev);
+  const x = i => padX + i / (elev.length - 1) * (W - padX - 8);
+  const y = v => H - padB - (v - min) / (max - min || 1) * (H - padT - padB);
+
+  // grid + labels
+  ctx.font = '11px Inter, system-ui'; ctx.fillStyle = dark ? '#94a3b8' : '#64748b';
+  ctx.strokeStyle = dark ? '#1e293b' : '#e2e8f0'; ctx.lineWidth = 1;
+  [min, (min + max) / 2, max].forEach(v => {
+    ctx.beginPath(); ctx.moveTo(padX, y(v) + .5); ctx.lineTo(W - 8, y(v) + .5); ctx.stroke();
+    ctx.textAlign = 'right'; ctx.fillText(`${Math.round(v)} m`, padX - 6, y(v) + 4);
+  });
+  ctx.textAlign = 'center';
+  const stepKm = routeCache.distance > 60000 ? 20 : routeCache.distance > 20000 ? 5 : 1;
+  for (let k = 0; k * 1000 <= routeCache.distance; k += stepKm)
+    ctx.fillText(`${k} km`, x(k * 1000 / routeCache.distance * (elev.length - 1)), H - 3);
+
+  const area = (to, fill, stroke) => {
+    const g = ctx.createLinearGradient(0, padT, 0, H - padB);
+    g.addColorStop(0, fill[0]); g.addColorStop(1, fill[1]);
+    ctx.beginPath(); ctx.moveTo(x(0), H - padB);
+    for (let i = 0; i <= to; i++) ctx.lineTo(x(i), y(elev[i]));
+    ctx.lineTo(x(to), H - padB); ctx.closePath(); ctx.fillStyle = g; ctx.fill();
+    ctx.beginPath(); for (let i = 0; i <= to; i++) ctx.lineTo(x(i), y(elev[i]));
+    ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
+  };
+  area(elev.length - 1, ['rgba(59,130,246,.35)', 'rgba(59,130,246,.05)'], '#3b82f6');
+
+  if (along != null) {
+    const cut = Math.round(along / routeCache.distance * (elev.length - 1));
+    area(cut, ['rgba(225,29,72,.45)', 'rgba(225,29,72,.08)'], '#e11d48');
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x(cut), padT); ctx.lineTo(x(cut), H - padB); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(x(cut), y(elev[cut]), 5, 0, 7);
+    ctx.fillStyle = '#e11d48'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+  }
+}
+
+// Last good response is kept in localStorage so a reload during an outage still shows something.
+const CACHE_KEY = `tracking:${SHARE_ID}`;
+const loadCache = () => { try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { return null; } };
+const saveCache = data => { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data, fetchedAt: Date.now() })); } catch {} };
+let lastFetchedAt = null;
+
+async function poll() {
+  try {
+    const r = await fetch(`/api/tracking/${SHARE_ID}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    const data = await r.json();
+    render(data);
+    if (r.headers.get('X-Cache') === 'stale') { // server served its cached copy, upstream is failing
+      $('error').textContent = `⚠ Hammerhead unavailable, showing last known data (fetched ${ago(+r.headers.get('X-Cached-At'))}). ${r.headers.get('X-Upstream-Error') || ''}`;
+      return;
+    }
+    saveCache(data);
+    lastFetchedAt = Date.now();
+    $('error').textContent = '';
+  } catch (e) {
+    $('error').textContent = lastData
+      ? `⚠ Connection problem, showing last known data (fetched ${lastFetchedAt ? ago(lastFetchedAt) : 'earlier'}). ${e.message}`
+      : '⚠ ' + e.message;
+  }
+}
+
+if (!SHARE_ID) {
+  $('routeName').textContent = 'No tracking ID';
+  $('state').style.display = 'none';
+  $('error').textContent = 'Add ?id=<tracking id> to the URL, e.g. ?id=AbCd1234';
+  $('profileCard').style.display = 'none';
+  map.setView([49.8, 15.5], 7);
+} else {
+  setInterval(() => { if (lastData?.updatedAt) $('updated').textContent = `updated ${ago(lastData.updatedAt)}`; }, 1000);
+  addEventListener('resize', () => drawProfile(lastAlong));
+  const cached = loadCache();
+  if (cached?.data) { render(cached.data); lastFetchedAt = cached.fetchedAt; }
+  poll();
+  setInterval(poll, POLL_MS);
+}
+</script>
+</body>
+</html>
