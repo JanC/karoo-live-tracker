@@ -69,6 +69,8 @@ mise run deploy           # every deploy
 
 `mise tasks` lists the other shortcuts, such as `dev`, `screenshots` and `logs`.
 
+Pushes to `master` also deploy automatically through [GitHub Actions](.github/workflows/fly-deploy.yml), using the same `mise run deploy`. This needs a `FLY_API_TOKEN` repository secret, which you can create with `fly tokens create deploy`. Changes that only touch docs or screenshots don't trigger a deploy.
+
 ### Configuration
 
 Settings are read from the environment or from `.env`:

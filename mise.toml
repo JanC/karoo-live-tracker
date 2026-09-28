@@ -30,7 +30,7 @@ fi
 
 [tasks.deploy]
 description = "Deploy to Fly.io"
-run = "flyctl deploy"
+run = "flyctl deploy --remote-only"  # builds on Fly, no local Docker needed
 
 [tasks.logs]
 description = "Tail the Fly.io logs"
