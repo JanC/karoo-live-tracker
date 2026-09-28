@@ -52,6 +52,8 @@
             color: var(--muted); text-decoration: none; }
   .source:hover { color: var(--fg); }
   .welcome .source { margin-top: 20px; }
+  .note { font-size: 11px; line-height: 1.5; color: var(--muted); margin-top: 8px; }
+  .welcome .note { font-size: 12px; margin-top: 16px; }
 
   .progress { margin: 16px 0 14px; }
   .progress .bar { height: 8px; border-radius: 99px; background: var(--tile); overflow: hidden; }
@@ -131,6 +133,7 @@
     <h3>Other</h3><table id="meta"></table>
   </details>
   <a class="source" href="https://github.com/JanC/karoo-live-tracker" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source on GitHub</a>
+  <div class="note" id="panelNote">Not affiliated with Hammerhead. Ride data is cached for a few days, then deleted.</div>
 </div>
 
 <div id="profileCard" class="card">
@@ -473,6 +476,13 @@ function drawProfile(along) {
 
 // Last good response is kept in localStorage so a reload during an outage still shows something.
 const CACHE_KEY = `tracking:${SHARE_ID}`;
+const CACHE_MS = (window.CACHE_DAYS ?? 3) * 86400000;
+try { // drop cached rides older than the retention period, for every tracking id
+  Object.keys(localStorage).filter(k => k.startsWith('tracking:')).forEach(k => {
+    const c = JSON.parse(localStorage.getItem(k));
+    if (!c?.fetchedAt || Date.now() - c.fetchedAt > CACHE_MS) localStorage.removeItem(k);
+  });
+} catch {}
 const loadCache = () => { try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { return null; } };
 const saveCache = data => { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data, fetchedAt: Date.now() })); } catch {} };
 let lastFetchedAt = null;
@@ -514,6 +524,10 @@ if (!SHARE_ID) {
     <div id="error"></div>
     <div class="or">or</div>
     <button id="demoBtn" class="btn secondary">▶ Try the demo ride</button>
+    <p class="note">Not affiliated with Hammerhead or SRAM. Ride data comes from the Hammerhead share link you paste and
+      passes through this server. The latest data for each link is kept for up to ${window.CACHE_DAYS ?? 3} days, so the map still
+      works if Hammerhead is briefly unreachable, and then deleted. There are no accounts, cookies or analytics. Map tiles are loaded
+      from the map providers.</p>
     <a class="source" href="https://github.com/JanC/karoo-live-tracker" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source on GitHub</a>`;
   $('demoBtn').onclick = () => { params.set('id', 'demo'); location.search = params; };
   $('idForm').onsubmit = e => {
@@ -527,6 +541,7 @@ if (!SHARE_ID) {
 } else {
   setInterval(() => { if (lastData?.updatedAt) $('updated').textContent = `updated ${ago(lastData.updatedAt)}`; }, 1000);
   addEventListener('resize', () => drawProfile(lastAlong));
+  $('panelNote').textContent = `Not affiliated with Hammerhead. Ride data is cached for up to ${window.CACHE_DAYS ?? 3} days, then deleted.`;
   const cached = loadCache();
   if (cached?.data) { render(cached.data); lastFetchedAt = cached.fetchedAt; }
   poll();

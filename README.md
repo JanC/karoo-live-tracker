@@ -79,10 +79,11 @@ Settings are read from the environment or from `.env`:
 | `PORT` | `8765` | Port to listen on |
 | `DEMO_SPEED` | `20` | Demo playback speed as a multiple of real time. `0` freezes the demo, which is handy for screenshots. |
 | `DEMO_GPX` | `demo/ride.gpx` | GPX file replayed as the demo ride |
+| `CACHE_DAYS` | `3` | Days a cached tracking response is kept before it is deleted |
 
 ## How it works
 
-The page polls `/api/tracking/<id>`. The Python server forwards this to `https://dashboard.hammerhead.io/v1/shares/tracking/<id>`, because that endpoint doesn't send CORS headers and can't be called from the browser directly. Each good response is also saved to `cache/`, and returned with an `X-Cache: stale` header when Hammerhead fails. [`response/example.json`](response/example.json) shows the response format.
+The page polls `/api/tracking/<id>`. The Python server forwards this to `https://dashboard.hammerhead.io/v1/shares/tracking/<id>`, because that endpoint doesn't send CORS headers and can't be called from the browser directly. Each good response is also saved to `cache/`, and returned with an `X-Cache: stale` header when Hammerhead fails. Only the page and the API are served; the cache and source files are not publicly reachable. [`response/example.json`](response/example.json) shows the response format.
 
 The tracking ID `demo` never reaches Hammerhead. [`mock.py`](mock.py) replays [`demo/ride.gpx`](demo/ride.gpx), a recorded 66 km gravel ride, using its own timestamps, so real stops show up as paused. It builds a response in the same format and starts halfway through the ride. Point `DEMO_GPX` at any GPX track to replay a different ride.
 
@@ -93,6 +94,10 @@ The tracking ID `demo` never reaches Hammerhead. [`mock.py`](mock.py) replays [`
 | `mock.py` | Demo ride simulation |
 | `demo/ride.gpx` | Ride replayed by the demo |
 | `response/example.json` | Example API response |
+
+## Privacy
+
+The app has no accounts, cookies or analytics. Tracking data comes from the Hammerhead share link a viewer pastes and passes through the server. The server keeps the latest response for each link, and the browser keeps a copy in local storage, so the map keeps working if Hammerhead is briefly unreachable. Both copies are deleted after `CACHE_DAYS` (3 days by default). The server log records tracking IDs when Hammerhead requests fail. Map tiles are loaded directly from the map providers, which see the viewer's IP address and the map area being viewed.
 
 ## Map data
 
