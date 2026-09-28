@@ -1,0 +1,37 @@
+[tools]
+flyctl = "0.4.108"
+
+[tasks.dev]
+description = "Run the server locally on http://localhost:8765"
+run = "python3 server.py"
+
+[tasks.screenshots]
+description = "Run the server with the demo ride frozen, for screenshots"
+env = { DEMO_SPEED = "0" }
+run = "python3 server.py"
+
+[tasks.docker]
+description = "Build and run the Docker container"
+run = "docker compose up --build"
+
+[tasks.setup]
+description = "One-time Fly.io setup: create the app and cache volume, upload MAPY_API_KEY from .env"
+run = """
+set -e
+flyctl launch --no-deploy --copy-config
+flyctl volumes create cache --size 1 --region fra --yes
+set -a; [ -f .env ] && . ./.env; set +a
+if [ -n "$MAPY_API_KEY" ]; then
+  flyctl secrets set --stage MAPY_API_KEY="$MAPY_API_KEY"
+else
+  echo "No MAPY_API_KEY in .env; the Mapy.cz maps stay off until you run: flyctl secrets set MAPY_API_KEY=..."
+fi
+"""
+
+[tasks.deploy]
+description = "Deploy to Fly.io"
+run = "flyctl deploy"
+
+[tasks.logs]
+description = "Tail the Fly.io logs"
+run = "flyctl logs"

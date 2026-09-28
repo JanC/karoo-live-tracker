@@ -56,6 +56,19 @@ Or with Docker:
 docker compose up --build
 ```
 
+### Deploying to Fly.io
+
+[`fly.toml`](fly.toml) runs the same container on a small Fly machine that stops when idle, with a volume for the cache. The tools and commands are set up with [mise](https://mise.jdx.dev):
+
+```sh
+mise install              # installs flyctl
+mise exec -- fly auth login
+mise run setup            # once: creates the app and volume, uploads MAPY_API_KEY from .env
+mise run deploy           # every deploy
+```
+
+`mise tasks` lists the other shortcuts, such as `dev`, `screenshots` and `logs`.
+
 ### Configuration
 
 Settings are read from the environment or from `.env`:
