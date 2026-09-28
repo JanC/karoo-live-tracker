@@ -11,7 +11,7 @@ if os.path.exists(".env"):
     for line in open(".env"):
         if "=" in line and not line.lstrip().startswith("#"):
             k, v = line.strip().split("=", 1)
-            os.environ.setdefault(k, v.strip().strip("\"'"))
+            os.environ.setdefault(k, v.split(" #")[0].strip().strip("\"'"))
 
 PORT = int(os.environ.get("PORT", 8765))
 UPSTREAM = "https://dashboard.hammerhead.io/v1/shares/tracking/"
